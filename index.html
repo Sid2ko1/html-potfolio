@@ -1,0 +1,797 @@
+<!doctype html>
+<html lang="en">
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Siddharth Kannan</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Big+Shoulders+Display:wght@600;800;900&family=IBM+Plex+Mono:wght@400;500&family=IBM+Plex+Sans:wght@400;500;600&display=swap">
+<style>
+/* Layout: full-screen canvas "message network" scene; three stacked screens (welcome, sector menu, sector view) zoom in and out over it. Deliberately single dark theme. */
+:root {
+  --bg: #060A11;
+  --panel: rgba(9, 14, 23, .80);
+  --ink: #E6EDF5;
+  --muted: #8C9CB1;
+  --line: rgba(140, 170, 210, .18);
+  --accent: #6EA8FF;
+  --hue: #6EA8FF;
+  --cur: #6EA8FF;
+  --f-display: "Big Shoulders Display", "Arial Narrow", Impact, sans-serif;
+  --f-body: "IBM Plex Sans", system-ui, -apple-system, "Segoe UI", sans-serif;
+  --f-mono: "IBM Plex Mono", ui-monospace, Consolas, monospace;
+  --ease-zoom: cubic-bezier(.7, 0, .2, 1);
+  color-scheme: dark;
+}
+* { box-sizing: border-box; }
+html, body { height: 100%; overflow: hidden; }
+body { background: var(--bg); color: var(--ink); font-family: var(--f-body); font-size: 16px; line-height: 1.6; }
+button { font: inherit; color: inherit; }
+a { color: var(--hue); text-underline-offset: 3px; }
+:focus-visible { outline: 2px solid var(--hue); outline-offset: 4px; }
+
+#scene { position: fixed; inset: 0; width: 100%; height: 100%; display: block; }
+.vignette { position: fixed; inset: 0; pointer-events: none; z-index: 1;
+  background: radial-gradient(ellipse at center, transparent 45%, rgba(3,5,9,.85) 100%),
+              repeating-linear-gradient(0deg, rgba(255,255,255,.025) 0 1px, transparent 1px 3px); }
+
+/* HUD frame */
+.hud { position: fixed; inset: 0; pointer-events: none; z-index: 5; font-family: var(--f-mono); font-size: 11.5px; letter-spacing: .08em; text-transform: uppercase; color: var(--muted); }
+.hud .bar { position: absolute; left: 0; right: 0; display: flex; justify-content: space-between; gap: 12px; padding-inline: 24px; }
+.hud .top { top: calc(env(safe-area-inset-top, 0px) + 18px); }
+.hud .bottom { bottom: calc(env(safe-area-inset-bottom, 0px) + 16px); }
+.hud .status { color: var(--cur); transition: color .4s; display: flex; align-items: center; gap: 8px; }
+.hud .status::before { content: ""; width: 7px; height: 7px; border-radius: 50%; background: currentColor; box-shadow: 0 0 10px currentColor; animation: pulse 1.6s infinite; }
+.corner { position: absolute; width: 22px; height: 22px; border: 0 solid rgba(140,170,210,.4); }
+.corner.tl { top: 10px; left: 10px; border-top-width: 1px; border-left-width: 1px; }
+.corner.tr { top: 10px; right: 10px; border-top-width: 1px; border-right-width: 1px; }
+.corner.bl { bottom: 10px; left: 10px; border-bottom-width: 1px; border-left-width: 1px; }
+.corner.br { bottom: 10px; right: 10px; border-bottom-width: 1px; border-right-width: 1px; }
+.keys span { margin-right: 18px; }
+.keys kbd { font-family: inherit; border: 1px solid var(--line); border-radius: 3px; padding: 0 5px; margin-right: 6px; color: var(--ink); }
+@keyframes pulse { 50% { opacity: .35; } }
+
+/* screens */
+.screen { position: fixed; inset: 0; z-index: 3; display: flex;
+  transition: opacity .7s ease, transform 1.15s var(--ease-zoom), filter .8s ease; }
+.screen[data-state="on"] { transition-delay: var(--d, 0s); }
+
+/* welcome */
+.welcome { flex-direction: column; align-items: center; justify-content: center; text-align: center; padding-inline: 20px; cursor: pointer; }
+.welcome[data-state="off"] { opacity: 0; transform: scale(2.2); filter: blur(12px); pointer-events: none; }
+.welcome[data-state="back"] { opacity: 0; transform: scale(.6); filter: blur(8px); pointer-events: none; }
+.kicker { font-family: var(--f-mono); font-size: 12px; letter-spacing: .3em; text-transform: uppercase; color: var(--accent); margin: 0 0 18px; }
+.title { font-family: var(--f-display); font-weight: 900; text-transform: uppercase; line-height: .82; margin: 0; font-size: clamp(64px, 14vw, 200px); letter-spacing: .01em; }
+.title span { display: block; }
+.title .l1 { text-shadow: 0 0 40px rgba(110,168,255,.35); }
+.title .l2 { color: transparent; -webkit-text-stroke: 1.5px var(--ink); }
+.title .ch { display: inline-block; animation: rise .9s cubic-bezier(.2,.7,.2,1) both; animation-delay: calc(var(--i) * 45ms); }
+@keyframes rise { from { opacity: .001; transform: translateY(40px) scaleY(1.3); filter: blur(6px); } to { opacity: 1; transform: none; filter: none; } }
+.tagline { font-size: clamp(15px, 2vw, 19px); color: var(--muted); margin: 24px 0 36px; max-width: 46ch; }
+.tagline b { color: var(--ink); font-weight: 500; }
+.start { position: relative; background: none; border: 1px solid rgba(110,168,255,.5); padding: 16px 34px; cursor: pointer;
+  font-family: var(--f-display); font-weight: 800; font-size: 22px; letter-spacing: .2em; text-transform: uppercase; color: var(--ink); transition: background-color .3s, letter-spacing .3s; }
+.start:hover { background: rgba(110,168,255,.12); letter-spacing: .26em; }
+.start::before, .start::after { content: ""; position: absolute; width: 12px; height: 12px; border: 2px solid var(--accent); }
+.start::before { top: -6px; left: -6px; border-right: 0; border-bottom: 0; }
+.start::after { bottom: -6px; right: -6px; border-left: 0; border-top: 0; }
+.start .blink { animation: pulse 1.4s infinite; }
+.hint { font-family: var(--f-mono); font-size: 12px; color: var(--muted); margin-top: 16px; letter-spacing: .08em; }
+.loader { width: 220px; height: 2px; background: var(--line); margin: 34px auto 8px; overflow: hidden; }
+.loader i { display: block; height: 100%; background: var(--accent); animation: load 1.6s cubic-bezier(.6,0,.2,1) both; }
+@keyframes load { from { width: 4%; } to { width: 100%; } }
+.loader-label { font-family: var(--f-mono); font-size: 11px; letter-spacing: .14em; color: var(--muted); text-transform: uppercase; }
+
+/* menu */
+.menu { align-items: center; padding-inline: clamp(20px, 7vw, 110px); }
+.menu[data-state="pre"] { opacity: 0; transform: scale(.75); filter: blur(8px); pointer-events: none; }
+.menu[data-state="post"] { opacity: 0; transform: scale(1.35) translateX(-60px); filter: blur(10px); pointer-events: none; }
+.menu-col { width: min(480px, 100%); }
+.menu-head { font-family: var(--f-mono); font-size: 12px; letter-spacing: .2em; text-transform: uppercase; color: var(--muted); margin: 0 0 6px; }
+.menu-title { font-family: var(--f-display); font-weight: 800; font-size: 20px; letter-spacing: .14em; text-transform: uppercase; margin: 0 0 22px; color: var(--ink); }
+.opts { list-style: none; margin: 0; padding: 0; display: grid; gap: 2px; }
+.opt { position: relative; display: block; width: 100%; text-align: left; background: none; border: 0; padding: 8px 0 8px 22px; cursor: pointer; overflow: hidden;
+  opacity: 0; transform: translateX(-40px); transition: opacity .5s, transform .6s cubic-bezier(.2,.7,.2,1); }
+.menu[data-state="on"] .opt { opacity: 1; transform: none; transition-delay: calc(var(--d, 0s) + var(--i) * 80ms); }
+.opt::before { content: ""; position: absolute; left: 0; top: 50%; width: 3px; height: 0; background: var(--hue); transform: translateY(-50%); transition: height .3s; box-shadow: 0 0 12px var(--hue); }
+.opt .sweep { position: absolute; inset: 0; background: linear-gradient(90deg, color-mix(in srgb, var(--hue) 22%, transparent), transparent 75%); transform: scaleX(0); transform-origin: left; transition: transform .45s cubic-bezier(.2,.7,.2,1); }
+.opt .lbl { position: relative; display: block; font-family: var(--f-display); font-weight: 800; text-transform: uppercase; font-size: clamp(36px, 5.2vw, 58px); line-height: 1;
+  color: rgba(230,237,245,.42); transition: color .3s, transform .4s cubic-bezier(.2,.7,.2,1), letter-spacing .4s, text-shadow .3s; }
+.opt .sub { position: relative; display: block; font-family: var(--f-mono); font-size: 12px; letter-spacing: .06em; color: var(--muted); max-height: 0; opacity: 0; transition: max-height .35s, opacity .35s, margin .35s; }
+.opt.hot::before { height: 76%; }
+.opt.hot .sweep { transform: scaleX(1); }
+.opt.hot .lbl { color: var(--hue); transform: translateX(14px); letter-spacing: .035em; text-shadow: 0 0 28px color-mix(in srgb, var(--hue) 55%, transparent); }
+.opt.hot .sub { max-height: 24px; opacity: 1; margin: 4px 0 0 14px; }
+.opt.exit .lbl { font-size: clamp(22px, 3vw, 30px); }
+.opts .sep { height: 1px; background: var(--line); margin: 14px 0; }
+
+.readout { position: fixed; right: clamp(20px, 5vw, 64px); bottom: 64px; width: 300px; z-index: 4; font-family: var(--f-mono); font-size: 12px;
+  border-left: 2px solid var(--hue); padding: 4px 0 4px 16px; transition: opacity .4s, transform .4s, border-color .3s; }
+.readout.off { opacity: 0; transform: translateX(20px); }
+.readout .q { color: var(--hue); letter-spacing: .08em; }
+.readout .big { font-family: var(--f-display); font-weight: 800; font-size: 34px; line-height: 1; text-transform: uppercase; margin: 6px 0 10px; }
+.readout ul { list-style: none; margin: 0; padding: 0; color: var(--muted); display: grid; gap: 3px; }
+.readout li::before { content: "› "; color: var(--hue); }
+
+/* sector view */
+.section { pointer-events: none; }
+.section[data-state="off"] { opacity: 0; }
+.section[data-state="off"] > *, [inert], [inert] * { pointer-events: none !important; }
+.section > * { pointer-events: auto; }
+.back { position: fixed; top: calc(env(safe-area-inset-top, 0px) + 52px); left: clamp(16px, 4vw, 56px); z-index: 6;
+  display: flex; align-items: center; gap: 10px; background: rgba(9,14,23,.6); border: 1px solid var(--line); padding: 9px 16px 9px 12px; cursor: pointer;
+  font-family: var(--f-mono); font-size: 12px; letter-spacing: .14em; text-transform: uppercase; transition: border-color .3s, gap .3s, background-color .3s;
+  animation: fadeIn .6s var(--d, 0s) both; }
+.back:hover { border-color: var(--hue); gap: 14px; background: rgba(9,14,23,.85); }
+.back svg { width: 18px; height: 18px; stroke: var(--hue); }
+.panel { position: fixed; top: calc(env(safe-area-inset-top, 0px) + 52px); bottom: calc(env(safe-area-inset-bottom, 0px) + 48px); right: clamp(16px, 4vw, 56px); width: min(620px, calc(100% - 32px));
+  overflow-y: auto; overscroll-behavior: contain; background: var(--panel); backdrop-filter: blur(16px); -webkit-backdrop-filter: blur(16px);
+  border: 1px solid var(--line); border-top: 2px solid var(--hue); padding: 30px 34px 26px; z-index: 4;
+  animation: panelIn .8s cubic-bezier(.2,.7,.2,1) var(--d, 0s) both; scrollbar-width: thin; scrollbar-color: var(--line) transparent; }
+@keyframes panelIn { from { opacity: .001; transform: translateX(70px) scale(.96); filter: blur(6px); } to { opacity: 1; transform: none; filter: none; } }
+@keyframes fadeIn { from { opacity: .001; transform: translateX(-16px); } to { opacity: 1; transform: none; } }
+.p-eyebrow { font-family: var(--f-mono); font-size: 12px; letter-spacing: .12em; color: var(--hue); text-transform: uppercase; margin: 0 0 8px; }
+.p-title { font-family: var(--f-display); font-weight: 800; text-transform: uppercase; font-size: clamp(38px, 5vw, 56px); line-height: .95; margin: 0 0 18px; text-wrap: balance; }
+.panel h3 { font-family: var(--f-display); font-weight: 800; text-transform: uppercase; letter-spacing: .02em; font-size: 22px; margin: 0; line-height: 1.1; }
+.panel p { margin: 0 0 14px; }
+.muted { color: var(--muted); }
+.lead { font-size: 18px; }
+.kv { display: grid; grid-template-columns: auto 1fr; gap: 6px 18px; margin: 20px 0; padding: 16px 0; border-block: 1px solid var(--line); font-size: 14.5px; }
+.kv dt { font-family: var(--f-mono); font-size: 12px; color: var(--muted); text-transform: uppercase; letter-spacing: .06em; padding-top: 2px; }
+.kv dd { margin: 0; }
+
+.jobs { display: grid; gap: 22px; position: relative; padding-left: 22px; }
+.jobs::before { content: ""; position: absolute; left: 4px; top: 8px; bottom: 8px; width: 1px; background: var(--line); }
+.job { position: relative; }
+.job::before { content: ""; position: absolute; left: -22px; top: 7px; width: 9px; height: 9px; border: 1.5px solid var(--hue); background: var(--bg); transform: rotate(45deg); }
+.job.current::before { background: var(--hue); box-shadow: 0 0 12px var(--hue); }
+.job .when { font-family: var(--f-mono); font-size: 12px; color: var(--hue); letter-spacing: .04em; font-variant-numeric: tabular-nums; }
+.job .org { color: var(--muted); font-size: 14px; margin: 2px 0 8px; }
+.job ul { margin: 0; padding-left: 18px; display: grid; gap: 4px; font-size: 15px; }
+.job li::marker { color: var(--hue); }
+.promo { font-family: var(--f-mono); font-size: 12px; color: var(--muted); margin: 8px 0 0 !important; }
+
+.skillset { display: grid; gap: 20px; }
+.chips { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 10px; }
+.chip { font-size: 13px; padding: 3px 11px; border: 1px solid color-mix(in srgb, var(--hue) 40%, transparent); background: color-mix(in srgb, var(--hue) 10%, transparent); transition: background-color .2s, transform .2s; }
+.chip:hover { background: color-mix(in srgb, var(--hue) 24%, transparent); transform: translateY(-2px); }
+.chip.learning { border-style: dashed; background: transparent; color: var(--muted); }
+
+.flow { list-style: none; margin: 18px 0; padding: 0; display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; counter-reset: s; }
+.flow li { counter-increment: s; border-top: 2px solid var(--hue); padding-top: 8px; font-size: 14px; color: var(--muted); }
+.flow li::before { content: "Step " counter(s); display: block; font-family: var(--f-mono); font-size: 11px; color: var(--hue); text-transform: uppercase; letter-spacing: .08em; }
+.schema { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; font-family: var(--f-mono); font-size: 12.5px; margin: 8px 0 18px; }
+.entity { border: 1px solid var(--hue); padding: 7px 12px; background: color-mix(in srgb, var(--hue) 10%, transparent); }
+.rel { color: var(--muted); font-size: 11.5px; }
+.feat { list-style: none; margin: 0 0 16px; padding: 0; display: grid; gap: 12px; }
+.feat b { display: block; font-weight: 600; }
+.feat li { color: var(--muted); font-size: 14.5px; }
+code { font-family: var(--f-mono); font-size: .86em; color: var(--ink); background: color-mix(in srgb, var(--hue) 14%, transparent); padding: 1px 5px; }
+
+.email { display: flex; flex-wrap: wrap; align-items: center; gap: 12px; margin: 18px 0 8px; }
+.email output { font-family: var(--f-mono); font-size: 18px; border: 1px solid var(--line); background: rgba(0,0,0,.3); padding: 10px 14px; user-select: all; overflow-wrap: anywhere; }
+.btn { background: color-mix(in srgb, var(--hue) 16%, transparent); border: 1px solid var(--hue); padding: 10px 16px; cursor: pointer; font-family: var(--f-mono); font-size: 12.5px; letter-spacing: .1em; text-transform: uppercase; transition: background-color .2s; }
+.btn:hover { background: color-mix(in srgb, var(--hue) 30%, transparent); }
+.copied { font-family: var(--f-mono); font-size: 12px; color: var(--hue); min-height: 1.2em; }
+
+.p-nav { display: flex; justify-content: space-between; gap: 12px; margin-top: 28px; padding-top: 18px; border-top: 1px solid var(--line); }
+.p-nav button { background: none; border: 0; cursor: pointer; text-align: left; padding: 4px 0; font-family: var(--f-mono); font-size: 11.5px; letter-spacing: .1em; text-transform: uppercase; color: var(--muted); transition: color .2s; }
+.p-nav button:last-child { text-align: right; }
+.p-nav button b { display: block; font-family: var(--f-display); font-weight: 800; font-size: 22px; letter-spacing: .02em; color: var(--ink); transition: color .2s; }
+.p-nav button:hover b { color: var(--to); }
+
+/* cursor */
+.ring { position: fixed; left: 0; top: 0; width: 36px; height: 36px; margin: -18px 0 0 -18px; z-index: 50; pointer-events: none; opacity: 0;
+  border: 1.5px solid var(--cur); transform-origin: center; transition: width .25s, height .25s, margin .25s, opacity .3s, border-color .3s, border-radius .3s; border-radius: 50%; }
+.ring.on { opacity: .85; }
+.ring.hot { width: 58px; height: 58px; margin: -29px 0 0 -29px; border-radius: 4px; }
+.cdot { position: fixed; left: 0; top: 0; width: 5px; height: 5px; margin: -2.5px 0 0 -2.5px; background: var(--cur); z-index: 51; pointer-events: none; opacity: 0; transition: opacity .3s; }
+.cdot.on { opacity: 1; }
+
+@media (max-width: 860px) {
+  .readout { display: none; }
+  .panel { top: 40vh; bottom: calc(env(safe-area-inset-bottom, 0px) + 16px); left: 16px; right: 16px; width: auto; padding: 22px 20px; }
+  .flow { grid-template-columns: 1fr; }
+  .hud .bottom { display: none; }
+}
+@media (hover: none) { .keys { display: none; } }
+@media (prefers-reduced-motion: reduce) {
+  .screen, .opt { transition-duration: .2s !important; transition-delay: 0s !important; }
+  .title .ch, .panel, .back, .loader i { animation: none; }
+  .ring, .cdot { display: none; }
+}
+</style>
+
+<div class="vignette" aria-hidden="true"></div>
+<div id="root"></div>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/react/18.3.1/umd/react.production.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/react-dom/18.3.1/umd/react-dom.production.min.js"></script>
+<script src="https://unpkg.com/htm@3.1.1/dist/htm.umd.js"></script>
+<script>
+const { useState, useEffect, useRef, Fragment } = React;
+const html = htm.bind(React.createElement);
+const RM = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+const FINE = window.matchMedia('(pointer: fine)').matches;
+
+/* ================= content ================= */
+const SECTORS = [
+  { id: 'about', label: 'About', sub: 'Who I am and how I work', hue: '#6EA8FF', pos: [-580, -300, 220],
+    big: '4+ years', stats: ['Java backend developer', 'Banking & Financial Services', 'Bangalore, India'] },
+  { id: 'experience', label: 'Experience', sub: 'Five roles since 2020', hue: '#F2B84B', pos: [600, -320, 260],
+    big: '5 roles', stats: ['Accenture · Aspire Systems', '2 promotions at Aspire', 'Nov 2020 – now'] },
+  { id: 'skills', label: 'Skills', sub: 'Java, Spring Boot, integration', hue: '#5FD3A6', pos: [-620, 330, 160],
+    big: '5 groups', stats: ['Core Java · Spring Boot', 'PostgreSQL · JPA', 'IBM MQ · GCP · APIGEE'] },
+  { id: 'project', label: 'Project', sub: 'GitHub Activity Logger', hue: '#C08BFF', pos: [620, 330, 200],
+    big: '3 entities', stats: ['Spring Boot + PostgreSQL', 'Hourly @Scheduled sync', 'Personal build · 2026'] },
+  { id: 'contact', label: 'Contact', sub: 'Open to backend roles', hue: '#FF7A6B', pos: [0, 600, 420],
+    big: 'Say hello', stats: ['sid7152@outlook.com', 'Java backend & integration', 'Banking & fintech'] },
+];
+
+const JOBS = [
+  { id: 'acc', title: 'Senior Software Analyst', org: 'Accenture', when: 'Mar 2026 – now', current: true,
+    ctx: 'Enterprise Integration Developer (production support), large retail bank',
+    points: ['Monitor IBM MQ queues so messages reach retail stores on time.',
+      'Manage and validate scheduled Airflow jobs so data pipelines complete with full integrity.',
+      'Analyse pod logs on Google Cloud Platform to find and fix integration failures.',
+      'Support the IBM Cloud to Kubernetes migration by validating API gateway flows through APIGEE.'] },
+  { id: 'as2', title: 'Senior Software Developer', org: 'Aspire Systems', when: 'Jun 2025 – Mar 2026', ctx: 'Banking & Financial Services',
+    points: ['Built secure Java modules for user validation, verification and single-device sessions, with full audit logging.',
+      'Connected the Kony.js frontend to Java REST services through reusable session components and user-action loggers.'],
+    promo: 'Promoted for technical ownership · recognised by the client' },
+  { id: 'as1', title: 'Software Developer', org: 'Aspire Systems', when: 'Mar 2023 – Jun 2025', ctx: 'Banking & Financial Services on Temenos Infinity',
+    points: ['Led backend development of the Login Module, with flows that tell clients and customers apart.',
+      'Built session management that allows one active session per user and blocks concurrent logins.',
+      'Implemented API logging that records the timestamp, endpoint and response status of every call.',
+      'Designed user-action logging across frontend and backend for audit and analytics.',
+      'Wrote Functional Specification Documents for developers and client stakeholders.',
+      'Shipped performance-tuned components with zero post-deployment issues.'] },
+  { id: 'tr', title: 'BFS Trainee', org: 'Aspire Systems', when: 'Jun 2022 – Mar 2023',
+    points: ['Structured training in Java, Kony.js and Temenos Infinity.', 'Hands-on work with Temenos banking products and omnichannel flows.'] },
+  { id: 'in', title: 'Software Engineer Intern', org: 'Swarashiya Solutions', when: 'Nov 2020 – Feb 2021',
+    points: ['Built UI for a Flutter job-search mobile app.'] },
+];
+
+const SKILLS = [
+  { name: 'Java', items: ['Core Java', 'OOP', 'Collections', 'Streams', 'Lambdas', 'Optional', 'Functional Interfaces', 'Exception Handling'] },
+  { name: 'Spring Boot', items: ['REST APIs', 'Spring Data JPA', 'Hibernate', 'IoC / DI', '@Scheduled', 'Global Exception Handling'] },
+  { name: 'Data', items: ['PostgreSQL', 'SQL', 'JPA entity mapping', 'Relational schema design'] },
+  { name: 'Integration & Cloud', items: ['IBM MQ', 'GCP', 'Kubernetes', 'APIGEE', 'Airflow', 'Git', 'Azure DevOps', 'CI/CD'], learning: ['Docker'] },
+  { name: 'Domain', items: ['Retail & SME banking', 'Login & sessions', 'API logging', 'Investments', 'Payments', 'Temenos Infinity', 'Agile'] },
+];
+
+/* ================= scene engine ================= */
+function createScene(canvas, sectors) {
+  const ctx = canvas.getContext('2d');
+  let W = 0, H = 0;
+  function resize() {
+    const d = Math.min(window.devicePixelRatio || 1, 2);
+    W = window.innerWidth; H = window.innerHeight;
+    canvas.width = W * d; canvas.height = H * d;
+    ctx.setTransform(d, 0, 0, d, 0, 0);
+  }
+  resize(); window.addEventListener('resize', resize);
+
+  const rgb = h => [1, 3, 5].map(i => parseInt(h.slice(i, i + 2), 16));
+  const cols = sectors.map(s => rgb(s.hue));
+  const HUB = [150, 175, 210];
+  const rgba = (c, a) => `rgba(${c[0]},${c[1]},${c[2]},${a})`;
+  const R = (a, b) => a + Math.random() * (b - a);
+  const easeIO = t => t < .5 ? 4 * t * t * t : 1 - Math.pow(-2 * t + 2, 3) / 2;
+  const easeOut = t => 1 - Math.pow(1 - t, 3);
+  const easeIn = t => t * t * t;
+
+  /* --- build the network --- */
+  const nodes = [], edges = [], keys = new Set(), trunk = [];
+  const add = (x, y, z, c, r) => { nodes.push({ x, y, z, c, r: r || 1.6, ph: R(0, 6.28) }); return nodes.length - 1; };
+  const link = (a, b, tr) => { if (a === b) return; const k = a < b ? a + '-' + b : b + '-' + a; if (keys.has(k)) return; keys.add(k); edges.push({ a, b, c: nodes[b].c, tr: tr === undefined ? -1 : tr }); return edges.length - 1; };
+  const fib = (cx, cy, cz, r, n, c) => { const ids = []; for (let i = 0; i < n; i++) { const y = 1 - (i / (n - 1)) * 2, rad = Math.sqrt(1 - y * y), th = i * 2.39996; ids.push(add(cx + Math.cos(th) * rad * r, cy + y * r, cz + Math.sin(th) * rad * r, c)); } return ids; };
+  const knn = (ids, k) => ids.forEach(i => { const a = nodes[i]; ids.filter(j => j !== i).map(j => [j, (nodes[j].x - a.x) ** 2 + (nodes[j].y - a.y) ** 2 + (nodes[j].z - a.z) ** 2]).sort((p, q) => p[1] - q[1]).slice(0, k).forEach(p => link(i, p[0])); });
+
+  const hub = add(0, 0, 0, -1, 4);
+  const hubIds = fib(0, 0, 0, 70, 28, -1); knn(hubIds, 2); hubIds.forEach((id, i) => { if (i % 4 === 0) link(hub, id); });
+
+  sectors.forEach((s, ci) => {
+    const [cx, cy, cz] = s.pos;
+    const center = add(cx, cy, cz, ci, 3.5);
+    trunk[ci] = link(hub, center, ci);
+    if (s.id === 'about') {
+      const outer = fib(cx, cy, cz, 130, 70, ci), inner = fib(cx, cy, cz, 55, 18, ci);
+      knn(outer, 2); knn(inner, 2); inner.forEach(i => link(center, i));
+    } else if (s.id === 'experience') {
+      const A = [], B = [];
+      for (let i = 0; i < 48; i++) {
+        const t = i / 47, x = cx - 240 + t * 480, a = t * Math.PI * 5;
+        A.push(add(x, cy + Math.cos(a) * 70, cz + Math.sin(a) * 70, ci));
+        B.push(add(x, cy - Math.cos(a) * 70, cz - Math.sin(a) * 70, ci));
+        if (i) { link(A[i - 1], A[i]); link(B[i - 1], B[i]); }
+        if (i % 4 === 0) link(A[i], B[i]);
+      }
+      [0.04, 0.3, 0.55, 0.78, 0.97].forEach(t => { const m = add(cx - 240 + t * 480, cy, cz, ci, 4.5); const k = Math.round(t * 47); link(m, A[k]); link(m, B[k]); });
+    } else if (s.id === 'skills') {
+      [[170, 30, .5], [120, 22, -.4], [70, 14, .2]].forEach(([r, n, tilt]) => {
+        const ring = [];
+        for (let i = 0; i < n; i++) { const a = i / n * 6.283, x = Math.cos(a) * r, yy = Math.sin(a) * r; ring.push(add(cx + x, cy + yy * Math.cos(tilt), cz + yy * Math.sin(tilt), ci)); }
+        ring.forEach((id, i) => { link(id, ring[(i + 1) % n]); if (i % 5 === 0) link(id, center); });
+      });
+    } else if (s.id === 'project') {
+      const cubes = [-210, 0, 210].map((ox, k) => {
+        const sz = k === 1 ? 62 : 52, cs = [];
+        for (let i = 0; i < 8; i++) cs.push(add(cx + ox + (i & 1 ? sz : -sz), cy + (i & 2 ? sz : -sz) + (k - 1) * -20, cz + (i & 4 ? sz : -sz), ci, 2.4));
+        [[0,1],[2,3],[4,5],[6,7],[0,2],[1,3],[4,6],[5,7],[0,4],[1,5],[2,6],[3,7]].forEach(([a, b]) => link(cs[a], cs[b]));
+        return cs;
+      });
+      link(cubes[0][1], cubes[1][0]); link(cubes[0][3], cubes[1][2]);
+      link(cubes[1][5], cubes[2][4]); link(cubes[1][7], cubes[2][6]); link(cubes[1][1], cubes[2][0]);
+      link(center, cubes[1][0]);
+    } else if (s.id === 'contact') {
+      const col = [];
+      for (let i = 0; i < 16; i++) col.push(add(cx, cy + 90 - i * 20, cz, ci, i === 15 ? 4.5 : 2));
+      col.forEach((id, i) => { if (i) link(col[i - 1], id); });
+      [[90, 20], [150, 30]].forEach(([r, n]) => {
+        const ring = [];
+        for (let i = 0; i < n; i++) { const a = i / n * 6.283; ring.push(add(cx + Math.cos(a) * r, cy + 90, cz + Math.sin(a) * r, ci)); }
+        ring.forEach((id, i) => link(id, ring[(i + 1) % n]));
+        link(ring[0], col[0]); link(ring[Math.floor(n / 2)], col[0]);
+      });
+      link(center, col[0]);
+      s.top = [cx, cy - 210, cz];
+    }
+  });
+  const local = edges.map((e, i) => i).filter(i => edges[i].tr < 0);
+
+  const stars = [];
+  for (let i = 0; i < 700; i++) stars.push({ x: R(-3400, 3400), y: R(-2200, 2200), z: R(-2100, 4200), r: R(.4, 1.3) });
+
+  /* --- state --- */
+  const st = { mode: 'welcome', hover: -1, focus: -1 };
+  const cam = { x: 0, y: -40, z: -2700 };
+  let tw = null, yaw = 0, flash = 0, collapse = 0, exitT0 = -1, exitBurst = false, last = performance.now(), beaconT = 0;
+  const w = sectors.map(() => .6), en = sectors.map(() => 0), spin = sectors.map(() => 0), routed = sectors.map(() => 0);
+  const mouse = { x: 0, y: 0 }, mt = { x: 0, y: 0 };
+  const packets = [], rings = [], parts = [];
+  const NP = nodes.length, px = new Float32Array(NP), py = new Float32Array(NP), ps = new Float32Array(NP), pf = new Float32Array(NP);
+  const wpos = new Float32Array(NP * 3);
+  window.addEventListener('pointermove', e => { mt.x = e.clientX / W * 2 - 1; mt.y = e.clientY / H * 2 - 1; }, { passive: true });
+
+  const ring = (p, c, R0, R1, d) => rings.push({ x: p[0], y: p[1], z: p[2], c, R0, R1, d, t0: performance.now() });
+  const burst = (p, c, n, sp) => { for (let i = 0; i < n; i++) { const a = R(0, 6.283), b = R(-1, 1), m = R(2, sp || 9); parts.push({ x: p[0], y: p[1], z: p[2], vx: Math.cos(a) * Math.sqrt(1 - b * b) * m, vy: b * m, vz: Math.sin(a) * Math.sqrt(1 - b * b) * m, life: 1, c }); } };
+  const tween = (d, kick) => { tw = { f: { x: cam.x, y: cam.y, z: cam.z }, t0: performance.now(), d: RM ? 350 : d, kick: RM ? 0 : kick }; };
+
+  function desired() {
+    let d;
+    if (st.mode === 'welcome') d = { x: 0, y: -40, z: -2700 };
+    else if (st.mode === 'menu') {
+      d = { x: W < 860 ? 0 : -260, y: 40, z: -1400 };
+      if (st.hover >= 0) { const p = sectors[st.hover].pos; d.x += (p[0] - d.x) * .12; d.y += (p[1] - d.y) * .12; d.z += (p[2] - d.z) * .1; }
+      if (st.hover === -2) d.z -= 160;
+    } else {
+      const p = sectors[st.focus].pos, narrow = W < 860, k = Math.min(1.5, Math.max(1, 1300 / W));
+      d = { x: p[0] + (narrow ? 0 : 230 * k), y: p[1] + (narrow ? 190 : 10), z: p[2] - (narrow ? 700 : 580 * k) };
+    }
+    const par = st.mode === 'section' ? 22 : 70;
+    d.x += mouse.x * par; d.y += mouse.y * par * .6;
+    return d;
+  }
+
+  function nodePos(i, n, time) {
+    let x = n.x, y = n.y, z = n.z;
+    if (n.c >= 0) {
+      const s = sectors[n.c], cx = s.pos[0], cy = s.pos[1], cz = s.pos[2], E = en[n.c], a = spin[n.c], ca = Math.cos(a), sa = Math.sin(a);
+      if (s.id === 'about') { const k = 1 + .3 * E; let dx = (x - cx) * k, dy = (y - cy) * k, dz = (z - cz) * k; x = cx + dx * ca - dz * sa; z = cz + dx * sa + dz * ca; y = cy + dy; }
+      else if (s.id === 'experience') { const dy = y - cy, dz = z - cz; y = cy + dy * ca - dz * sa; z = cz + dy * sa + dz * ca; }
+      else if (s.id === 'skills') { const dx = x - cx, dy = y - cy; x = cx + dx * ca - dy * sa; y = cy + dx * sa + dy * ca; }
+      else if (s.id === 'project') { const b = a * .4, cb = Math.cos(b), sb = Math.sin(b); const dx = (x - cx) * (1 + .45 * E), dz = z - cz; x = cx + dx * cb - dz * sb; z = cz + dx * sb + dz * cb; }
+      else if (s.id === 'contact') { const by = cy + 90; y = by + (y - by) * (1 + .5 * E); const dx = x - cx, dz = z - cz; x = cx + dx * ca - dz * sa; z = cz + dx * sa + dz * ca; }
+    }
+    y += Math.sin(time * .0012 + n.ph) * 2.5;
+    const k = collapse;
+    wpos[i * 3] = x * (1 - k); wpos[i * 3 + 1] = y * (1 - k); wpos[i * 3 + 2] = z * (1 - k);
+  }
+
+  function frame(now) {
+    const dt = Math.min(50, now - last); last = now;
+    mouse.x += (mt.x - mouse.x) * .05; mouse.y += (mt.y - mouse.y) * .05;
+
+    /* camera */
+    const d = desired(), prevZ = cam.z; let fov = 1;
+    if (tw) {
+      const t = Math.min(1, (now - tw.t0) / tw.d), e = easeIO(t);
+      cam.x = tw.f.x + (d.x - tw.f.x) * e; cam.y = tw.f.y + (d.y - tw.f.y) * e; cam.z = tw.f.z + (d.z - tw.f.z) * e;
+      fov = 1 - tw.kick * Math.sin(Math.PI * e);
+      if (t >= 1) tw = null;
+    } else { cam.x += (d.x - cam.x) * .06; cam.y += (d.y - cam.y) * .06; cam.z += (d.z - cam.z) * .06; }
+    const vz = cam.z - prevZ;
+
+    if (st.mode === 'welcome' && !RM) yaw += .0011 * dt / 16;
+    else { const tg = Math.round(yaw / 6.2832) * 6.2832; yaw += (tg - yaw) * .045; }
+
+    /* exit collapse */
+    if (exitT0 >= 0) {
+      const t = (now - exitT0) / 1000;
+      collapse = t < .55 ? easeIn(t / .55) * .94 : t < 1.75 ? (1 - easeOut((t - .55) / 1.2)) * .94 : 0;
+      if (t >= .55 && !exitBurst) { exitBurst = true; flash = .35; burst([0, 0, 0], HUB, 160, 16); ring([0, 0, 0], HUB, 40, 1400, 1300); }
+      if (t >= 1.75) exitT0 = -1;
+    }
+
+    /* weights and energy */
+    sectors.forEach((s, i) => {
+      let tg = .6, te = 0;
+      if (st.mode === 'menu') { if (st.hover === -2) tg = .14; else if (st.hover >= 0) { tg = st.hover === i ? 1 : .26; te = st.hover === i ? 1 : 0; } }
+      else if (st.mode === 'section') { tg = st.focus === i ? 1 : .16; te = st.focus === i ? .5 : 0; }
+      w[i] += (tg - w[i]) * .08; en[i] += (te - en[i]) * .06;
+      spin[i] += dt * (.00022 + .0024 * en[i]);
+    });
+
+    /* projection */
+    const F = 900 * Math.max(.45, Math.min(W / 1300, H / 850)) * fov;
+    const cs = Math.cos(yaw), sn = Math.sin(yaw), out = {};
+    const proj = (x, y, z) => { const X = x * cs - z * sn, Z = x * sn + z * cs, dz = Z - cam.z; if (dz < 30) return false; const s = F / dz; out.x = W / 2 + (X - cam.x) * s; out.y = H / 2 + (y - cam.y) * s; out.s = s; out.dz = dz; return true; };
+    const fog = dz => Math.max(0, Math.min(1, 1.25 - dz / 4300)) * Math.min(1, (dz - 30) / 140);
+
+    ctx.globalCompositeOperation = 'source-over';
+    const warp = Math.abs(vz) > 3 && !RM;
+    ctx.fillStyle = warp ? 'rgba(6,10,17,.42)' : '#060A11';
+    ctx.fillRect(0, 0, W, H);
+    ctx.globalCompositeOperation = 'lighter';
+
+    /* stars, streaking while the camera flies */
+    for (const s of stars) {
+      if (!proj(s.x, s.y, s.z)) continue;
+      const a = fog(out.dz) * .8, r = Math.max(.4, s.r * out.s * 2.2);
+      if (warp) {
+        const x1 = out.x, y1 = out.y;
+        if (!proj(s.x, s.y, s.z + vz * 7)) continue;
+        ctx.strokeStyle = `rgba(190,215,255,${a})`; ctx.lineWidth = r;
+        ctx.beginPath(); ctx.moveTo(out.x, out.y); ctx.lineTo(x1, y1); ctx.stroke();
+      } else { ctx.fillStyle = `rgba(190,215,255,${a})`; ctx.fillRect(out.x, out.y, r, r); }
+    }
+
+    /* nodes */
+    for (let i = 0; i < NP; i++) {
+      const n = nodes[i]; nodePos(i, n, now);
+      if (proj(wpos[i * 3], wpos[i * 3 + 1], wpos[i * 3 + 2])) { px[i] = out.x; py[i] = out.y; ps[i] = out.s; pf[i] = fog(out.dz); } else pf[i] = 0;
+    }
+    const hubW = st.hover === -2 ? 1 : .5;
+    ctx.lineWidth = 1;
+    for (const e of edges) {
+      if (!pf[e.a] || !pf[e.b]) continue;
+      let a;
+      if (e.tr >= 0) a = .05 + (st.hover === e.tr ? .35 : 0) + (st.mode === 'section' && st.focus === e.tr ? .12 : 0);
+      else a = .05 + .3 * (e.c >= 0 ? w[e.c] : hubW * .6);
+      ctx.strokeStyle = rgba(e.c >= 0 ? cols[e.c] : HUB, a * Math.min(pf[e.a], pf[e.b]));
+      ctx.beginPath(); ctx.moveTo(px[e.a], py[e.a]); ctx.lineTo(px[e.b], py[e.b]); ctx.stroke();
+    }
+    for (let i = 0; i < NP; i++) {
+      if (!pf[i]) continue;
+      const n = nodes[i], wt = n.c >= 0 ? w[n.c] : hubW, c = n.c >= 0 ? cols[n.c] : HUB;
+      const tw2 = .8 + .2 * Math.sin(now * .003 + n.ph);
+      const r = Math.max(.6, n.r * ps[i] * (.7 + .9 * wt));
+      ctx.fillStyle = rgba(c, .07 * wt * pf[i]); ctx.beginPath(); ctx.arc(px[i], py[i], r * 4.5, 0, 6.283); ctx.fill();
+      ctx.fillStyle = rgba(c, (.3 + .7 * wt) * pf[i] * tw2); ctx.beginPath(); ctx.arc(px[i], py[i], r, 0, 6.283); ctx.fill();
+    }
+
+    /* message packets */
+    if (packets.length < 160 && Math.random() < .7) packets.push({ e: local[(Math.random() * local.length) | 0], t: 0, sp: R(.004, .012) });
+    sectors.forEach((s, i) => {
+      const rate = st.mode === 'menu' && st.hover === i ? .5 : st.mode === 'section' && st.focus === i ? .12 : .025;
+      if (Math.random() < rate) packets.push({ e: trunk[i], t: 0, sp: st.hover === i ? .02 : .008, routed: i });
+    });
+    for (let k = packets.length - 1; k >= 0; k--) {
+      const p = packets[k]; p.t += p.sp * dt / 16;
+      if (p.t >= 1) { if (p.routed !== undefined) routed[p.routed]++; packets.splice(k, 1); continue; }
+      const e = edges[p.e]; if (!pf[e.a] || !pf[e.b]) continue;
+      const x = px[e.a] + (px[e.b] - px[e.a]) * p.t, y = py[e.a] + (py[e.b] - py[e.a]) * p.t;
+      const c = e.c >= 0 ? cols[e.c] : HUB, wt = e.c >= 0 ? w[e.c] : .5, sz = Math.max(1, (ps[e.a] + ps[e.b]) * 1.4);
+      ctx.fillStyle = rgba(c, .25 * wt); ctx.beginPath(); ctx.arc(x, y, sz * 3, 0, 6.283); ctx.fill();
+      ctx.fillStyle = `rgba(255,255,255,${.85 * wt})`; ctx.beginPath(); ctx.arc(x, y, sz, 0, 6.283); ctx.fill();
+    }
+
+    /* contact beacon */
+    const ci = sectors.findIndex(s => s.id === 'contact');
+    if (w[ci] > .55 && now - beaconT > 1300) { beaconT = now; ring(sectors[ci].top, cols[ci], 10, 160 + 140 * en[ci], 1500); }
+
+    /* shockwaves */
+    ctx.lineWidth = 1.5;
+    for (let k = rings.length - 1; k >= 0; k--) {
+      const g = rings[k], t = (now - g.t0) / g.d;
+      if (t >= 1) { rings.splice(k, 1); continue; }
+      const kk = 1 - collapse;
+      if (!proj(g.x * kk, g.y * kk, g.z * kk)) continue;
+      const Rw = g.R0 + (g.R1 - g.R0) * easeOut(t);
+      ctx.strokeStyle = rgba(g.c, (1 - t) * .8);
+      ctx.beginPath(); ctx.arc(out.x, out.y, Math.max(1, Rw * out.s), 0, 6.283); ctx.stroke();
+    }
+    /* particles */
+    for (let k = parts.length - 1; k >= 0; k--) {
+      const p = parts[k]; const f = dt / 16;
+      p.x += p.vx * f; p.y += p.vy * f; p.z += p.vz * f; p.vx *= .965; p.vy *= .965; p.vz *= .965; p.life -= dt / 1100;
+      if (p.life <= 0) { parts.splice(k, 1); continue; }
+      if (!proj(p.x, p.y, p.z)) continue;
+      ctx.fillStyle = rgba(p.c, p.life); const r = Math.max(.8, 2.2 * out.s);
+      ctx.beginPath(); ctx.arc(out.x, out.y, r, 0, 6.283); ctx.fill();
+    }
+
+    /* lock-on reticle */
+    ctx.globalCompositeOperation = 'source-over';
+    if (st.mode === 'menu' && st.hover !== -1 && !tw) {
+      const isExit = st.hover === -2, p = isExit ? [0, 0, 0] : sectors[st.hover].pos, c = isExit ? [255, 122, 107] : cols[st.hover];
+      if (proj(p[0], p[1], p[2])) {
+        const half = Math.max(46, (isExit ? 110 : 210) * out.s), L = 16, x = out.x, y = out.y, wob = Math.sin(now * .006) * 3;
+        ctx.strokeStyle = rgba(c, .9); ctx.lineWidth = 1.5;
+        [[-1, -1], [1, -1], [1, 1], [-1, 1]].forEach(([sx, sy]) => {
+          const cx = x + sx * (half + wob), cy = y + sy * (half + wob);
+          ctx.beginPath(); ctx.moveTo(cx, cy - sy * L); ctx.lineTo(cx, cy); ctx.lineTo(cx - sx * L, cy); ctx.stroke();
+        });
+        ctx.fillStyle = rgba(c, .95); ctx.font = '500 11px "IBM Plex Mono", monospace';
+        ctx.fillText(isExit ? 'SK.SESSION · CLOSE' : `SK.${sectors[st.hover].id.toUpperCase()}.QUEUE`, x - half, y - half - 10);
+        ctx.fillStyle = 'rgba(200,215,235,.75)';
+        const lbl = isExit ? 'ALL CHANNELS IDLE' : `DEPTH ${String(routed[st.hover]).padStart(4, '0')} MSGS`;
+        ctx.fillText(lbl, x + half - ctx.measureText(lbl).width, y + half + 18);
+      }
+    }
+    if (flash > .01) { ctx.fillStyle = `rgba(215,230,255,${flash})`; ctx.fillRect(0, 0, W, H); flash *= .88; }
+    requestAnimationFrame(frame);
+  }
+  requestAnimationFrame(frame);
+
+  return {
+    start() { st.mode = 'menu'; tween(2300, .4); flash = .3; burst([0, 0, 0], HUB, 80, 12); ring([0, 0, 0], HUB, 30, 1100, 1500); },
+    hover(i) {
+      if (st.mode !== 'menu' || i === st.hover) return;
+      st.hover = i;
+      if (i >= 0) { ring(sectors[i].pos, cols[i], 340, 150, 650); burst(sectors[i].pos, cols[i], 18, 5); }
+      if (i === -2) ring([0, 0, 0], [255, 122, 107], 260, 60, 700);
+    },
+    select(i) {
+      const p = sectors[i].pos; st.hover = -1; st.mode = 'section'; st.focus = i;
+      burst(p, cols[i], 110, 13); ring(p, cols[i], 40, 900, 1200); ring(p, cols[i], 20, 500, 900); flash = .2; tween(1750, .3);
+    },
+    back() { if (st.focus >= 0) ring(sectors[st.focus].pos, cols[st.focus], 600, 60, 900); st.mode = 'menu'; tween(1500, -.18); },
+    exit() { st.mode = 'welcome'; st.hover = -1; st.focus = -1; exitT0 = performance.now(); exitBurst = false; tween(2600, .25); },
+    jump(i) { st.mode = 'section'; st.focus = i; const d = desired(); cam.x = d.x; cam.y = d.y; cam.z = d.z; },
+  };
+}
+
+/* ================= UI pieces ================= */
+function Cursor({ color, hot }) {
+  const ring = useRef(null), dot = useRef(null);
+  useEffect(() => {
+    if (!FINE || RM) return;
+    let tx = 0, ty = 0, rx = 0, ry = 0, raf;
+    const move = e => { tx = e.clientX; ty = e.clientY; ring.current.classList.add('on'); dot.current.classList.add('on'); dot.current.style.transform = `translate(${tx}px,${ty}px)`; };
+    const leave = () => { ring.current.classList.remove('on'); dot.current.classList.remove('on'); };
+    const loop = () => { rx += (tx - rx) * .2; ry += (ty - ry) * .2; ring.current.style.transform = `translate(${rx}px,${ry}px) rotate(${hot ? 45 : 0}deg)`; raf = requestAnimationFrame(loop); };
+    window.addEventListener('pointermove', move, { passive: true });
+    document.documentElement.addEventListener('pointerleave', leave);
+    raf = requestAnimationFrame(loop);
+    return () => { window.removeEventListener('pointermove', move); document.documentElement.removeEventListener('pointerleave', leave); cancelAnimationFrame(raf); };
+  }, [hot]);
+  return html`<${Fragment}>
+    <div className=${'ring' + (hot ? ' hot' : '')} ref=${ring} style=${{ '--cur': color }} aria-hidden="true"></div>
+    <div className="cdot" ref=${dot} style=${{ '--cur': color }} aria-hidden="true"></div>
+  <//>`;
+}
+
+function Title() {
+  let i = 0;
+  const line = (t, cls) => html`<span className=${cls}>${[...t].map(c => html`<span className="ch" key=${i} style=${{ '--i': i++ }}>${c}</span>`)}</span>`;
+  return html`<h1 className="title" aria-label="Siddharth Kannan">${line('Siddharth', 'l1')}${line('Kannan', 'l2')}</h1>`;
+}
+
+function About() {
+  return html`<${Fragment}>
+    <p className="lead">I'm a Java backend developer with more than four years of experience building services for retail and SME banking.</p>
+    <p className="muted">Most of my work sits where a bank's platform has to be correct: login, session control, and logging every API call and user action for audit. I led a Login Module on Temenos Infinity, built single-session enforcement, and designed the logging that lets teams trace what happened and when.</p>
+    <p className="muted">Today I support enterprise integrations for a large retail bank across IBM MQ, Airflow, Google Cloud and APIGEE. I'm going deeper into microservices and Docker next.</p>
+    <dl className="kv">
+      <dt>Based in</dt><dd>Bangalore, India</dd>
+      <dt>Now</dt><dd>Senior Software Analyst, Accenture</dd>
+      <dt>Focus</dt><dd>Java, Spring Boot, enterprise integration</dd>
+      <dt>Languages</dt><dd>English (professional), Tamil (native)</dd>
+    </dl>
+    <h3>B.E. Mechatronics</h3>
+    <p className="muted" style=${{ marginTop: '4px' }}>Bannari Amman Institute of Technology, Tamil Nadu · 2018 – 2022 · First Class. Final-year project: a door that unlocks with facial recognition, built on image processing.</p>
+  <//>`;
+}
+
+function Experience() {
+  return html`<div className="jobs">
+    ${JOBS.map(j => html`<article key=${j.id} className=${'job' + (j.current ? ' current' : '')}>
+      <div className="when">${j.when}${j.current ? ' · current' : ''}</div>
+      <h3>${j.title}</h3>
+      <div className="org">${j.org}${j.ctx ? ' · ' + j.ctx : ''}</div>
+      <ul>${j.points.map((p, i) => html`<li key=${i}>${p}</li>`)}</ul>
+      ${j.promo ? html`<p className="promo">${j.promo}</p>` : null}
+    </article>`)}
+  </div>`;
+}
+
+function Skills() {
+  return html`<div className="skillset">
+    ${SKILLS.map(s => html`<div key=${s.name}>
+      <h3>${s.name}</h3>
+      <div className="chips">
+        ${s.items.map(i => html`<span className="chip" key=${i}>${i}</span>`)}
+        ${(s.learning || []).map(i => html`<span className="chip learning" key=${i}>${i} · learning</span>`)}
+      </div>
+    </div>`)}
+  </div>`;
+}
+
+function Project() {
+  return html`<${Fragment}>
+    <p className="lead">A Spring Boot service that keeps a running record of my GitHub commits in PostgreSQL.</p>
+    <ol className="flow">
+      <li>Call the GitHub API with a plain Java HTTP client.</li>
+      <li>Map events to JPA entities.</li>
+      <li>Skip any event already stored.</li>
+      <li>Save to PostgreSQL and repeat every hour.</li>
+    </ol>
+    <p className="p-eyebrow" style=${{ marginTop: '22px' }}>Data model</p>
+    <div className="schema"><span className="entity">User</span><span className="rel">1 → n</span><span className="entity">Repository</span><span className="rel">n ↔ n</span><span className="entity">CommitRecords</span></div>
+    <ul className="feat">
+      <li><b>Hourly sync</b>Scheduled with <code>@Scheduled</code>; duplicates skipped via <code>existsByEventID()</code>.</li>
+      <li><b>Normalised schema</b>One-to-many and many-to-many JPA mappings across three entities.</li>
+      <li><b>Clean errors</b>Custom <code>GitHubAPIException</code>, an <code>ErrorResponse</code> DTO and <code>@RestControllerAdvice</code>.</li>
+    </ul>
+    <div className="chips">${['Spring Boot', 'PostgreSQL', 'Spring Data JPA', 'Hibernate', 'REST', 'Scheduler'].map(t => html`<span className="chip" key=${t}>${t}</span>`)}</div>
+  <//>`;
+}
+
+function Contact() {
+  const [msg, setMsg] = useState('');
+  const out = useRef(null);
+  const copy = () => {
+    const sel = () => { const r = document.createRange(); r.selectNodeContents(out.current); const s = getSelection(); s.removeAllRanges(); s.addRange(r); setMsg('Selected. Press Ctrl+C to copy.'); };
+    try { navigator.clipboard.writeText(out.current.textContent).then(() => setMsg('Copied to clipboard'), sel); } catch (e) { sel(); }
+  };
+  return html`<${Fragment}>
+    <p className="lead">I'm interested in Java backend and integration work, especially in banking and fintech. Email is the best way to reach me.</p>
+    <div className="email">
+      <output ref=${out}>sid7152@outlook.com</output>
+      <button className="btn" type="button" onClick=${copy}>Copy email</button>
+    </div>
+    <div className="copied" role="status">${msg}</div>
+    <div className="chips" style=${{ marginTop: '18px' }}>${['Java backend', 'Spring Boot', 'Enterprise integration', 'Banking & fintech'].map(t => html`<span className="chip" key=${t}>${t}</span>`)}</div>
+  <//>`;
+}
+
+const BODIES = { about: About, experience: Experience, skills: Skills, project: Project, contact: Contact };
+const TITLES = { about: 'Backend work where correctness matters', experience: 'Five roles, one thread: banking', skills: 'The toolkit', project: 'GitHub Activity Logger', contact: "Let's talk" };
+
+/* ================= app ================= */
+function App() {
+  const canvas = useRef(null), eng = useRef(null), optRefs = useRef([]), busy = useRef(false);
+  const initial = SECTORS.findIndex(s => s.id === (location.hash || '').slice(1));
+  const [screen, setScreen] = useState(initial >= 0 ? 'section' : 'welcome');
+  const [from, setFrom] = useState(null);
+  const [focus, setFocus] = useState(initial >= 0 ? initial : 0);
+  const [hover, setHover] = useState(-1);
+  const [delay, setDelay] = useState(0);
+  const [visit, setVisit] = useState(initial >= 0 ? 1 : 0);
+
+  useEffect(() => { eng.current = createScene(canvas.current, SECTORS); if (initial >= 0) eng.current.jump(initial); }, []);
+
+  const setHash = id => { try { history.replaceState(null, '', id ? '#' + id : location.pathname + location.search); } catch (e) {} };
+  const lock = ms => { busy.current = true; setTimeout(() => { busy.current = false; }, RM ? 200 : ms); };
+  const go = (next, d) => { setFrom(screen); setDelay(RM ? 0 : d); setScreen(next); };
+
+  const A = {
+    enter() { if (busy.current || screen !== 'welcome') return; lock(1700); eng.current.start(); go('menu', 1.35); setTimeout(() => optRefs.current[0] && optRefs.current[0].focus({ preventScroll: true }), RM ? 60 : 1700); },
+    open(i) { if (busy.current) return; lock(1400); eng.current.select(i); setFocus(i); setVisit(v => v + 1); setHover(-1); go('section', screen === 'section' ? .9 : 1.1); setHash(SECTORS[i].id); },
+    back() { if (busy.current) return; lock(1300); eng.current.back(); go('menu', .95); setHash(''); setHover(-1); setTimeout(() => optRefs.current[focus] && optRefs.current[focus].focus({ preventScroll: true }), RM ? 60 : 1300); },
+    exit() { if (busy.current) return; lock(2200); eng.current.hover(-1); eng.current.exit(); setHover(-1); go('welcome', 1.6); setHash(''); },
+    hover(i) { setHover(i); eng.current && eng.current.hover(i); },
+  };
+  const live = useRef(); live.current = { A, screen };
+
+  useEffect(() => {
+    const onKey = e => {
+      const { A, screen } = live.current;
+      if (screen === 'welcome' && (e.key === 'Enter' || e.key === ' ')) { e.preventDefault(); A.enter(); }
+      else if (e.key === 'Escape') { if (screen === 'section') A.back(); else if (screen === 'menu') A.exit(); }
+      else if (screen === 'menu' && (e.key === 'ArrowDown' || e.key === 'ArrowUp')) {
+        e.preventDefault();
+        const list = optRefs.current.filter(Boolean), idx = list.indexOf(document.activeElement);
+        const next = list[(idx + (e.key === 'ArrowDown' ? 1 : -1) + list.length) % list.length]; next && next.focus();
+      }
+    };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, []);
+
+  const sec = SECTORS[focus], hov = hover >= 0 ? SECTORS[hover] : null;
+  const hue = screen === 'section' ? sec.hue : hov ? hov.hue : hover === -2 ? '#FF7A6B' : '#6EA8FF';
+  const status = screen === 'welcome' ? 'Standby' : screen === 'section' ? `Sector · ${sec.label}` : hov ? `Routing → ${hov.label}` : hover === -2 ? 'Close session?' : 'Select a sector';
+  const hidden = s => ({ inert: s ? '' : undefined, 'aria-hidden': s ? 'true' : undefined });
+  const welcomeState = screen === 'welcome' ? 'on' : (from === 'welcome' || screen !== 'welcome') ? 'off' : 'back';
+  const menuState = screen === 'menu' ? 'on' : screen === 'welcome' ? 'pre' : 'post';
+  const Body = BODIES[sec.id];
+  const prev = SECTORS[(focus + SECTORS.length - 1) % SECTORS.length], next = SECTORS[(focus + 1) % SECTORS.length];
+
+  return html`<${Fragment}>
+    <canvas id="scene" ref=${canvas} aria-hidden="true" style=${{ position: 'fixed', inset: 0, zIndex: 0 }}></canvas>
+
+    <div className="hud" style=${{ '--cur': hue }} aria-hidden="true">
+      <span className="corner tl"></span><span className="corner tr"></span><span className="corner bl"></span><span className="corner br"></span>
+      <div className="bar top"><span>SK // Portfolio · 2026</span><span className="status">${status}</span></div>
+      <div className="bar bottom">
+        <span className="keys">
+          ${screen === 'welcome' ? html`<span><kbd>Enter</kbd>Start</span>` : null}
+          ${screen === 'menu' ? html`<${Fragment}><span><kbd>↑↓</kbd>Navigate</span><span><kbd>Enter</kbd>Select</span><span><kbd>Esc</kbd>Exit</span><//>` : null}
+          ${screen === 'section' ? html`<span><kbd>Esc</kbd>Back to menu</span>` : null}
+        </span>
+        <span>Bangalore, India</span>
+      </div>
+    </div>
+
+    <div className="screen welcome" data-state=${welcomeState} style=${{ '--d': delay + 's' }} onClick=${A.enter} ...${hidden(screen !== 'welcome')}>
+      <p className="kicker">Java Backend Developer</p>
+      <${Title} />
+      <p className="tagline"><b>Secure, auditable backend services</b> for banking. Four years of Java, Spring Boot and enterprise integration.</p>
+      <button className="start" type="button" onClick=${e => { e.stopPropagation(); A.enter(); }}><span className="blink">▸</span> Start</button>
+      <div className="hint">Click anywhere or press Enter</div>
+      <div className="loader" aria-hidden="true"><i></i></div>
+      <div className="loader-label">Session established · 5 queues online</div>
+    </div>
+
+    <div className="screen menu" data-state=${menuState} style=${{ '--d': delay + 's' }} ...${hidden(screen !== 'menu')}>
+      <div className="menu-col">
+        <p className="menu-head">Siddharth Kannan</p>
+        <h2 className="menu-title">Select a sector</h2>
+        <ul className="opts" onMouseLeave=${() => A.hover(-1)}>
+          ${SECTORS.map((s, i) => html`<li key=${s.id}>
+            <button type="button" ref=${el => optRefs.current[i] = el} className=${'opt' + (hover === i ? ' hot' : '')} style=${{ '--hue': s.hue, '--i': i }}
+              onMouseEnter=${() => A.hover(i)} onFocus=${() => A.hover(i)} onClick=${() => A.open(i)}>
+              <span className="sweep"></span>
+              <span className="lbl">${s.label}</span>
+              <span className="sub">${s.sub}</span>
+            </button>
+          </li>`)}
+          <li className="sep" aria-hidden="true"></li>
+          <li>
+            <button type="button" ref=${el => optRefs.current[SECTORS.length] = el} className=${'opt exit' + (hover === -2 ? ' hot' : '')} style=${{ '--hue': '#FF7A6B', '--i': SECTORS.length }}
+              onMouseEnter=${() => A.hover(-2)} onFocus=${() => A.hover(-2)} onClick=${A.exit}>
+              <span className="sweep"></span>
+              <span className="lbl">Exit</span>
+              <span className="sub">Back to the title screen</span>
+            </button>
+          </li>
+        </ul>
+      </div>
+      <aside className=${'readout' + (screen === 'menu' && hov ? '' : ' off')} style=${{ '--hue': hov ? hov.hue : '#6EA8FF' }} aria-live="polite">
+        ${hov ? html`<${Fragment}>
+          <div className="q">SK.${hov.id.toUpperCase()}.QUEUE</div>
+          <div className="big">${hov.big}</div>
+          <ul>${hov.stats.map(t => html`<li key=${t}>${t}</li>`)}</ul>
+        <//>` : null}
+      </aside>
+    </div>
+
+    <div className="screen section" data-state=${screen === 'section' ? 'on' : 'off'} style=${{ '--hue': sec.hue, '--d': delay + 's' }} ...${hidden(screen !== 'section')}>
+      ${visit > 0 ? html`<${Fragment}>
+        <button className="back" type="button" onClick=${A.back} key=${'b' + visit}>
+          <svg viewBox="0 0 24 24" fill="none" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M15 18l-6-6 6-6"/></svg>
+          Back to menu
+        </button>
+        <article className="panel" key=${'p' + visit} aria-labelledby="ptitle">
+          <p className="p-eyebrow">SK.${sec.id.toUpperCase()}.QUEUE · ${sec.label}</p>
+          <h2 className="p-title" id="ptitle">${TITLES[sec.id]}</h2>
+          <${Body} />
+          <nav className="p-nav" aria-label="Other sectors">
+            <button type="button" style=${{ '--to': prev.hue }} onClick=${() => A.open(SECTORS.indexOf(prev))}>← Previous<b>${prev.label}</b></button>
+            <button type="button" style=${{ '--to': next.hue }} onClick=${() => A.open(SECTORS.indexOf(next))}>Next →<b>${next.label}</b></button>
+          </nav>
+        </article>
+      <//>` : null}
+    </div>
+
+    <${Cursor} color=${hue} hot=${hover !== -1 && screen === 'menu'} />
+  <//>`;
+}
+
+ReactDOM.createRoot(document.getElementById('root')).render(html`<${App} />`);
+</script>
+
+</html>
